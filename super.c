@@ -160,13 +160,13 @@ int extract_pass(char **data)
 {
 	if (!data[0][0])
 		return -1;
-	if (strcasecmp(data, "pass=") == 0)
+	if (strcasecmp(*data, "pass=") == 0)
 	{
 		*data = *data + 5;
 		char *end = memchr(*data, MYFS_PASS_SEP, MYFS_PASS_MAX_LEN + 1);
 		if (!end)
 			return -EINVAL;
-		return end - data;
+		return end - *data;
 	}
 	return -1;
 }
@@ -185,7 +185,7 @@ int myfs_fill_super(struct super_block *sb, void *data, int silent)
 	sb_set_blocksize(sb, MYFS_BLOCK_SIZE);
 	sb->s_maxbytes = MYFS_MAX_FILE_SIZE;
 	sb->s_op = &myfs_super_ops;
-	int pass_len = extract_pass(&data);
+	int pass_len = extract_pass((char**)(&data));
 	if (pass_len < 0)
 	{
 		err = -ENOTSUPP;
@@ -194,7 +194,7 @@ int myfs_fill_super(struct super_block *sb, void *data, int silent)
 	struct myfs_pass_hash hash;
 	struct myfs_key key;
 	passwd_to_hash(data, pass_len, &hash);
-	passwd_to_key(data, pass_len, &hash);
+	passwd_to_key(data, pass_len, &key);
 	data += pass_len + 1;
 	bh = sb_bread(sb, MYFS_SUPERBLOCK);
 	if (!bh)
