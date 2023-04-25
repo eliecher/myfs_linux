@@ -45,7 +45,8 @@ static int wr_ibmap(int fd, const struct myfs_disk_superblock *sb)
 	lseek(fd, sb->inode_bitmap_start_block * MYFS_BLOCK_SIZE, SEEK_SET);
 	unsigned char blk[MYFS_BLOCK_SIZE];
 	memset(blk, 0, MYFS_BLOCK_SIZE);
-	for (int i = 0; i < sb->inode_bitmap_num_blocks; i++)
+	int i;
+	for ( i = 0; i < sb->inode_bitmap_num_blocks; i++)
 	{
 		if (write(fd, blk, MYFS_BLOCK_SIZE) != MYFS_BLOCK_SIZE)
 			return -1;
@@ -84,7 +85,8 @@ static int wr_bbmap(int fd, const struct myfs_disk_superblock *sb)
 	lseek(fd, sb->data_bitmap_start_block * MYFS_BLOCK_SIZE, SEEK_SET);
 	unsigned char blk[MYFS_BLOCK_SIZE];
 	memset(blk, 0, MYFS_BLOCK_SIZE);
-	for (int i = 0; i < sb->data_bitmap_num_blocks; i++)
+	int i;
+	for ( i = 0; i < sb->data_bitmap_num_blocks; i++)
 	{
 		if (write(fd, blk, MYFS_BLOCK_SIZE) != MYFS_BLOCK_SIZE)
 			return -1;

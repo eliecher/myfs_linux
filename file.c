@@ -391,8 +391,8 @@ static void __myfs_truncate_remove_single_indirect(struct inode *inode)
 {
 	struct super_block *sb = inode->i_sb;
 	struct myfs_incore_inode *incore = MYFS_I(inode);
-	int p = MYFS_DIR;
-	for (int i = 0; i < MYFS_SINGLE_INDIR; i++)
+	int p = MYFS_DIR,i;
+	for (i = 0; i < MYFS_SINGLE_INDIR; i++)
 	{
 		sector_t bno = incore->data[p];
 		incore->data[p++] = 0;
@@ -409,7 +409,7 @@ static void __myfs_truncate_remove_double_indirect(struct inode *inode)
 	struct super_block *sb = inode->i_sb;
 	struct myfs_incore_inode *incore = MYFS_I(inode);
 	int p = MYFS_DIR + MYFS_SINGLE_INDIR;
-	for (int i = 0; i < MYFS_DOUBLE_INDIR; i++)
+	int i;for ( i = 0; i < MYFS_DOUBLE_INDIR; i++)
 	{
 		sector_t bno = incore->data[p];
 		incore->data[p++] = 0;
@@ -429,9 +429,10 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 	struct super_block *sb = inode->i_sb;
 	struct myfs_incore_inode *incore = MYFS_I(inode);
 	int si = MYFS_DIR, di = MYFS_DIR + MYFS_SINGLE_INDIR;
+	int i;
 	if (size == 0)
 	{
-		for (int i = 0; i < si; i++)
+		for (i = 0; i < si; i++)
 		{
 			if (incore->data[i])
 			{
@@ -449,11 +450,12 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 	uint chain[MYFS_MAX_INDEX_DEPTH];
 	int d = lblk_to_lindex((size - 1) / MYFS_BLOCK_SIZE, chain);
 	ino_t ino = inode->i_ino;
+	int i;
 	if (d == 1)
 	{
 		__myfs_truncate_remove_double_indirect(inode);
 		__myfs_truncate_remove_single_indirect(inode);
-		for (int i = chain[0] + 1; i < si; i++)
+		for ( i = chain[0] + 1; i < si; i++)
 		{
 			sector_t bno = incore->data[i];
 			incore->data[i] = 0;
@@ -467,7 +469,7 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 	{
 		sector_t bno = 0;
 		__myfs_truncate_remove_double_indirect(inode);
-		for (int i = chain[0] + 1; i < di; i++)
+		for (i = chain[0] + 1; i < di; i++)
 		{
 			bno = incore->data[i];
 			incore->data[i] = 0;
@@ -485,7 +487,7 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 		if (bh)
 		{
 			__le32 *index = (__le32 *)bh->b_data;
-			for (int i = chain[1] + 1; i < MYFS_POINTERS_PERBLOCK; i++)
+			for (i = chain[1] + 1; i < MYFS_POINTERS_PERBLOCK; i++)
 			{
 				int pentry = transposition_cipher(MYFS_I(inode)->key,ino, ibno, i);
 				bno = index[pentry];
@@ -502,7 +504,7 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 	else if (d == 3)
 	{
 		sector_t bno = 0;
-		for (int i = chain[0] + 1; i < MYFS_NUM_POINTERS; i++)
+		for (i = chain[0] + 1; i < MYFS_NUM_POINTERS; i++)
 		{
 			bno = incore->data[i];
 			incore->data[i] = 0;
@@ -520,7 +522,7 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 		if (bh)
 		{
 			__le32 *index = (__le32 *)bh->b_data;
-			for (int i = chain[1] + 1; i < MYFS_POINTERS_PERBLOCK; i++)
+			for (i = chain[1] + 1; i < MYFS_POINTERS_PERBLOCK; i++)
 			{
 				int pentry = transposition_cipher(MYFS_I(inode)->key,ino, ibno, i);
 				bno = index[pentry];
@@ -539,7 +541,7 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 			bh = sb_bread(sb, ibno);
 			if (bh)
 			{
-				for (int i = chain[2] + 1; i < MYFS_POINTERS_PERBLOCK; i++)
+				for (i = chain[2] + 1; i < MYFS_POINTERS_PERBLOCK; i++)
 				{
 					int pentry = transposition_cipher(MYFS_I(inode)->key,ino, ibno, i);
 					bno = index[pentry];

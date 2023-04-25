@@ -20,6 +20,7 @@ void passwd_to_hash(const char *passwd, int len, struct myfs_pass_hash *hash)
 		0xC3D2E1F0};
 	unsigned char buffer[64];
 	int done = 0;
+	int i;
 	for (done = 0; done + 64 <= len; done += 64)
 	{
 		memcpy(buffer, passwd + done, 64);
@@ -46,7 +47,7 @@ void passwd_to_hash(const char *passwd, int len, struct myfs_pass_hash *hash)
 	buffer[62] = (((__u64)len) >> 8);
 	buffer[63] = (((__u64)len) >> 0);
 	sha1_transform(state, buffer);
-	for (int i = 0; i < 5; i++)
+	for (i = 0; i < 5; i++)
 	{
 		hash->hash[i * 4 + 0] = (state[i] >> 24) & 0xff;
 		hash->hash[i * 4 + 1] = (state[i] >> 16) & 0xff;
@@ -71,6 +72,7 @@ void passwd_to_key(const char *passwd, int len, struct myfs_key *key)
 	};
 	unsigned char buffer[64];
 	int done = 0;
+	int i;
 	for (done = 0; done + 64 <= len; done += 64)
 	{
 		memcpy(buffer, passwd + done, 64);
@@ -98,7 +100,7 @@ void passwd_to_key(const char *passwd, int len, struct myfs_key *key)
 	buffer[63] = (((__u64)len) >> 0);
 	md5_transform(state, buffer);
 
-	for (int i = 0; i < 4; i++)
+	for (i = 0; i < 4; i++)
 	{
 		key->key[i * 4] = (unsigned char)(state[i] & 0xff);
 		key->key[i * 4 + 1] = (unsigned char)((state[i] >> 8) & 0xff);
@@ -214,9 +216,9 @@ static void md5_transform(__u32 state[4], const unsigned char buffer[64])
 	__u32 c = state[2];
 	__u32 d = state[3];
 	__u32 x[16];
-
+	int i = 0;
 	/* Convert the input buffer to an array of 32-bit words */
-	for (int i = 0; i < 16; i++)
+	for (i = 0; i < 16; i++)
 	{
 		x[i] = (__u32)buffer[i * 4] | ((__u32)buffer[i * 4 + 1] << 8) |
 			   ((__u32)buffer[i * 4 + 2] << 16) | ((__u32)buffer[i * 4 + 3] << 24);
@@ -364,9 +366,10 @@ static inline word aes_xor(const word w1, const word w2)
 static void aes_expand_key(const __u8 key[16], word w[44])
 {
 	word temp;
-	for (int i = 0; i < 4; i++)
+	int i;
+	for (i = 0; i < 4; i++)
 		w[i] = *(word *)(key + 4 * i);
-	for (int i = 4; i < 44; i += 4)
+	for (i = 4; i < 44; i += 4)
 	{
 		temp = w[i - 1];
 		temp = aes_rot_word(temp);
@@ -435,11 +438,13 @@ static inline void aes_mix_columns(word state[4])
 static inline void aes_encrypt(__u8 block[16], word round_keys[44])
 {
 	word state[4];
-	for (int i = 0; i < 4; i++)
-		for (int j = 0; j < 4; j++)
+	int i,j;
+	for (i = 0; i < 4; i++)
+		for (j = 0; j < 4; j++)
 			state[i].w[j] = block[i * 4 + j];
 	aes_add_round_key(state, round_keys);
-	for (int round = 1; round < 10; round++)
+	int round;
+	for (round = 1; round < 10; round++)
 	{
 		aes_byte_sub(state);
 		aes_shift_rows(state);
@@ -449,8 +454,8 @@ static inline void aes_encrypt(__u8 block[16], word round_keys[44])
 	aes_byte_sub(state);
 	aes_shift_rows(state);
 	aes_add_round_key(state, round_keys + 40);
-	for (int i = 0; i < 4; i++)
-		for (int j = 0; j < 4; j++)
+	for (i = 0; i < 4; i++)
+		for (j = 0; j < 4; j++)
 			block[i * 4 + j] = state[i].w[j];
 }
 
@@ -459,6 +464,7 @@ void chunk_encrypt(void *block, struct myfs_key *key, /* sector_t block_no, */ _
 	word keys[44];
 	aes_expand_key(key->key, keys);
 	__u8 buffer[16];
+	int i,j,k;
 	if (
 #ifdef __KERNEL__
 		unlikely(
@@ -484,14 +490,14 @@ void chunk_encrypt(void *block, struct myfs_key *key, /* sector_t block_no, */ _
 		buffer[9] = s >> 8;
 		buffer[8] = s;
 		aes_encrypt(buffer, keys);
-		for (int j = start_off % 16, k = 0; j < 16; j++, k++)
+		for (j = start_off % 16, k = 0; j < 16; j++, k++)
 			*((char *)block) ^= buffer[j];
 		block += 16 - start_off % 16;
 		start_off = s + 16;
 	}
 	int n_chunks = (end_off - start_off) / 16;
 	unsigned char(*chunks)[16] = block;
-	for (int i = 0; i < n_chunks; i++)
+	for (i = 0; i < n_chunks; i++)
 	{
 		memset(buffer, 0, 16);
 		/* store ino in big endian format */
@@ -509,7 +515,7 @@ void chunk_encrypt(void *block, struct myfs_key *key, /* sector_t block_no, */ _
 		buffer[9] = start_off >> 8;
 		buffer[8] = start_off;
 		aes_encrypt(buffer, keys);
-		for (int j = 0; j < 16; j++)
+		for (j = 0; j < 16; j++)
 			chunks[i][j] ^= buffer[j];
 		start_off += 16;
 	}
@@ -532,7 +538,7 @@ void chunk_encrypt(void *block, struct myfs_key *key, /* sector_t block_no, */ _
 		buffer[9] = start_off >> 8;
 		buffer[8] = start_off;
 		aes_encrypt(buffer, keys);
-		for (int j = 0; j < end_off - start_off; j++)
+		for ( j = 0; j < end_off - start_off; j++)
 			chunks[n_chunks][j] ^= buffer[j];
 		start_off = end_off;
 	}
@@ -2611,7 +2617,8 @@ static inline __u16 spn_perm(__u16 x)
 static __u16 spn(const __u16 m, const __u16 k[16])
 {
 	__u16 ans = m ^ k[0];
-	for (int i = 1; i < 15; i++)
+	int i;
+	for (i = 1; i < 15; i++)
 	{
 		spn_sub(ans);
 		spn_perm(ans);
@@ -2632,7 +2639,8 @@ int transposition_cipher(struct myfs_key fkey, unsigned long i_no, unsigned long
 	key_block[MYFS_KEY_LEN + 1] = rno >> 8;
 	memcpy(key_block + 2, fkey.key, MYFS_KEY_LEN);
 	__u16 rkeys[16];
-	for (int i = 0; i < 16; i++)
+	int i;
+	for ( i = 0; i < 16; i++)
 	{
 		switch ((i * 10) % 8)
 		{

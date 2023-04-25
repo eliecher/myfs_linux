@@ -39,8 +39,9 @@ static int myfs_iterate(struct file *filep, struct dir_context *ctx)
 	int n_seen = 0; // Number of entries seen so far
 	int err = 0;	// Error code, if any
 
+	int i;
 	// Iterate over the blocks of the directory inode
-	for (int i = 0; i < n_blocks; i++)
+	for (i = 0; i < n_blocks; i++)
 	{
 		// Read the block into a buffer head structure
 		struct buffer_head *bh = sb_bread(sb, incore_inode->data[i]);

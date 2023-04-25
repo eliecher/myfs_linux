@@ -325,9 +325,9 @@ sector_t myfs_balloc(struct super_block *sb)
 	if (isb->free_data_block_count == 0)
 		goto unlock_and_out;
 	struct buffer_head *bh = NULL;
-	int f = 0;
+	int f = 0,i;
 	sector_t bbmap = isb->bbmap_start_block;
-	for (int i = 0; i < isb->bbmap_block_count; i++)
+	for ( i = 0; i < isb->bbmap_block_count; i++)
 	{
 		bh = sb_bread(sb, bbmap);
 		uint32_t last_bitpos = (i == isb->bbmap_block_count - 1) ? isb->bbmap_last_block_bits : MYFS_BLOCK_SIZE_IN_BITS - 1;
@@ -393,7 +393,8 @@ ino_t myfs_ialloc(struct super_block *sb)
 		goto unlock_and_out;
 	struct buffer_head *bh = NULL;
 	sector_t ibmap = isb->ibmap_start_block;
-	for (int i = 0; i < isb->ibmap_block_count; i++)
+	int i;
+	for (i = 0; i < isb->ibmap_block_count; i++)
 	{
 		bh = sb_bread(sb, ibmap);
 		uint32_t last_bitpos = (i == isb->ibmap_block_count - 1) ? isb->ibmap_last_block_bits : MYFS_BLOCK_SIZE_IN_BITS - 1;

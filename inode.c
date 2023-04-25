@@ -146,7 +146,8 @@ int myfs_write_inode(struct inode *inode, struct writeback_control *wbc)
 		.size = i_size_read(inode),
 		.uid = inode->i_uid.val,
 	};
-	for (int i = 0; i < MYFS_NUM_POINTERS; i++)
+	int i;
+	for (i = 0; i < MYFS_NUM_POINTERS; i++)
 		disk_inode.data[i] = incore->data[i];
 	disk_inode.security_info.protections |= incore->flags & (MYFS_PASS | MYFS_CHNK | MYFS_TRNS);
 	if (TEST_OP(incore->flags, MYFS_PASS))
@@ -190,8 +191,9 @@ void myfs_evict_inode(struct inode *inode)
 	struct myfs_incore_inode *incore = MYFS_I(inode);
 	incore->flags &= MYFS_REGACC;
 
+int i;
 	/* Clear the data pointers of the incore inode */
-	for (int i = 0; i < MYFS_NUM_POINTERS; i++)
+	for ( i = 0; i < MYFS_NUM_POINTERS; i++)
 		incore->data[i] = 0;
 
 	/* Free the inode on the disk */
@@ -536,7 +538,7 @@ iput:
  */
 int free_index(struct super_block *sb, sector_t b_no, int level)
 {
-	int c = 0;
+	int c = 0,i;
 	if (level <= 0 || b_no == 0) // these cases should generally not occur
 		return;
 	struct buffer_head *bh = sb_bread(sb, b_no);
@@ -544,7 +546,7 @@ int free_index(struct super_block *sb, sector_t b_no, int level)
 		return;
 	__le32 *entry = (__le32 *)bh->b_data;
 	if (level == 1)
-		for (int i = 0; i < MYFS_POINTERS_PERBLOCK; i++)
+		for ( i = 0; i < MYFS_POINTERS_PERBLOCK; i++)
 		{
 			sector_t bno = *entry;
 			if (bno)
@@ -557,7 +559,7 @@ int free_index(struct super_block *sb, sector_t b_no, int level)
 	else
 	{
 		level--;
-		for (int i = 0; i < MYFS_POINTERS_PERBLOCK; i++)
+		for (i = 0; i < MYFS_POINTERS_PERBLOCK; i++)
 		{
 			sector_t bno = *entry;
 			if (bno)
@@ -583,23 +585,24 @@ static void free_all_blocks(struct inode *inode)
 {
 	u32 *data = MYFS_I(inode)->data;
 	struct super_block *sb = inode->i_sb;
+	int i;
 	if (S_ISDIR(inode->i_mode))
 	{
-		for (int i = 0; i < MYFS_NUM_POINTERS; i++)
+		for (i = 0; i < MYFS_NUM_POINTERS; i++)
 			myfs_bfree(sb, data[i]);
 		i_size_write(inode, 0);
 		inode->i_blocks = 0;
 	}
 	else if (S_ISREG(inode->i_mode))
 	{
-		for (int i = 0; i < MYFS_DIR; i++)
+		for ( i = 0; i < MYFS_DIR; i++)
 			myfs_bfree(sb, *data++);
-		for (int i = 0; i < MYFS_SINGLE_INDIR; i++)
+		for ( i = 0; i < MYFS_SINGLE_INDIR; i++)
 		{
 			free_index(sb, *data, 1);
 			myfs_bfree(sb, *data++);
 		}
-		for (int i = 0; i < MYFS_DOUBLE_INDIR; i++)
+		for ( i = 0; i < MYFS_DOUBLE_INDIR; i++)
 		{
 			free_index(sb, *data, 2);
 			myfs_bfree(sb, *data++);

@@ -1,4 +1,5 @@
 {
+  "C_Cpp.default.cStandard": "c89",
   "C_Cpp.default.includePath": [
     "/usr/src/linux-headers-5.15.0-60-generic/include",
     "/usr/src/linux-headers-5.15.0-60-generic/arch/x86/include",
