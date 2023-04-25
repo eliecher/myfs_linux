@@ -24,7 +24,7 @@ static int myfs_iterate(struct file *filep, struct dir_context *ctx)
 {
 	// Get the inode and in-core inode structures for the directory file
 	struct inode *inode = file_inode(filep);
-	struct myfs_incore_inode *incore_inode = MYSF_I(inode);
+	struct myfs_incore_inode *incore_inode = MYFS_I(inode);
 
 	// Get the superblock for the filesystem
 	struct super_block *sb = inode->i_sb;
@@ -55,7 +55,7 @@ static int myfs_iterate(struct file *filep, struct dir_context *ctx)
 		// Determine the number of directory entries in this block and get a pointer to the first one
 		int n_inblock = min(n_entries - n_seen, MYFS_DIR_ENTRY_PERBLOCK);
 		int to_see = n_inblock;
-		struct myfs_dir_entry *dentry = bh->b_data;
+		struct myfs_dir_entry *dentry = (struct myfs_dir_entry *)bh->b_data;
 
 		// Iterate over the directory entries in this block
 		while (to_see--)
@@ -73,7 +73,7 @@ static int myfs_iterate(struct file *filep, struct dir_context *ctx)
 	return err; // Return the error code, if any
 }
 
-const struct file_operations myfs_dir_fops = {
+struct file_operations myfs_dir_fops = {
 	.owner = THIS_MODULE,
 	.iterate_shared = myfs_iterate,
 };
