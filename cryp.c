@@ -1,7 +1,4 @@
 #include "cryp.h"
-#ifndef __KERNEL__
-#include <string.h>
-#endif
 ///@file
 
 static void sha1_transform(__u32 state[5], const unsigned char buffer[64]);

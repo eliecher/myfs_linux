@@ -1,11 +1,12 @@
 #ifndef MYFS_H
 #define MYFS_H
-#define __KERNEL__
+// #define __KERNEL__
 #include <linux/fs.h>
 #include <linux/stat.h>
 #include <linux/version.h>
 #include <linux/types.h>
 #include <linux/mutex.h>
+#include <linux/string.h>
 #include "cryp.h"
 #include "myfs_disk_structs.h"
 

@@ -1,6 +1,7 @@
 #ifndef MYFS_CRYP_H
 #define MYFS_CRYP_H
 #include <linux/types.h>
+#include <linux/string.h>
 
 #define MYFS_PASS_SEP '~'
 #define MYFS_PASS_MAX_LEN 64
