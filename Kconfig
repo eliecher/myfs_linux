@@ -1,0 +1,5 @@
+config MYFS_FS
+	tristate "MY FS module"
+	depends on BLOCK
+	help
+		MYFS is a simple filesystem that encrypts relar file's data and index
