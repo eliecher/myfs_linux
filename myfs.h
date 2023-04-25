@@ -39,7 +39,7 @@ struct myfs_incore_inode
 	/* 	u16 permissions;
 	 ! probably i_mode in vfs_inode will do the task
 	 */
-	__u32 data[MYFS_NUM_POINTERS];
+	sector_t data[MYFS_NUM_POINTERS];
 	struct myfs_pass_hash hash;
 	struct myfs_key key;
 	struct inode vfs_inode;

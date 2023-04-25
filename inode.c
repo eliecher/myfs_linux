@@ -8,6 +8,10 @@
 
 ///@file
 
+static const struct inode_operations myfs_inode_ops;
+static const struct inode_operations myfs_symlink_inode_ops;
+static void free_all_blocks(struct inode *);
+
 static inline void inode_no_to_loc(unsigned long ino, u64 *blk_no, int *inode_no_inblock)
 {
 	*blk_no = MYFS_INODE_STORE_START + ino / MYFS_INODE_PERBLOCK;
@@ -69,6 +73,7 @@ static struct inode *myfs_new_inode(struct inode *dir, umode_t mode)
 	{
 		/* If the mode is a symlink, set the symlink inode operations */
 		inode->i_op = &myfs_symlink_inode_ops;
+		inode->i_link = (char *)incore->data;
 	}
 
 	/* Set the inode's owner and timestamps based on the specified mode */
@@ -147,8 +152,11 @@ int myfs_write_inode(struct inode *inode, struct writeback_control *wbc)
 		.uid = inode->i_uid.val,
 	};
 	int i;
-	for (i = 0; i < MYFS_NUM_POINTERS; i++)
-		disk_inode.data[i] = incore->data[i];
+	if (S_ISLNK(inode->i_mode))
+		memcpy(disk_inode.data, incore->data, sizeof(disk_inode.data));
+	else
+		for (i = 0; i < MYFS_NUM_POINTERS; i++)
+			disk_inode.data[i] = incore->data[i];
 	disk_inode.security_info.protections |= incore->flags & (MYFS_PASS | MYFS_CHNK | MYFS_TRNS);
 	if (TEST_OP(incore->flags, MYFS_PASS))
 		disk_inode.security_info.hash = incore->hash;
@@ -191,9 +199,9 @@ void myfs_evict_inode(struct inode *inode)
 	struct myfs_incore_inode *incore = MYFS_I(inode);
 	incore->flags &= MYFS_REGACC;
 
-int i;
+	int i;
 	/* Clear the data pointers of the incore inode */
-	for ( i = 0; i < MYFS_NUM_POINTERS; i++)
+	for (i = 0; i < MYFS_NUM_POINTERS; i++)
 		incore->data[i] = 0;
 
 	/* Free the inode on the disk */
@@ -214,7 +222,7 @@ int i;
  */
 struct inode *myfs_iget(struct super_block *sb, unsigned long inode_no)
 {
-	int ret = 0;
+	int ret = 0, i;
 	struct myfs_incore_superblock *isb = MYFS_SB(sb);
 	if (inode_no >= isb->inode_count || inode_no < MYFS_ROOT_INODE_NO) /* invalid inode number */
 		return ERR_PTR(-EINVAL);
@@ -224,68 +232,64 @@ struct inode *myfs_iget(struct super_block *sb, unsigned long inode_no)
 	if (!TEST_OP(inode->i_state, I_NEW)) /* inode already in cache */
 		return inode;
 	struct myfs_incore_inode *incore = MYFS_I(inode);
-	struct buffer_head *bh = NULL;
-	u64 inode_blk_no = MYFS_INODE_STORE_START + inode_no / MYFS_INODE_PERBLOCK;
-	int inode_no_inblock = inode_no % MYFS_INODE_PERBLOCK;
-	bh = sb_bread(sb, inode_blk_no);
-	if (!bh)
-	{
-		ret = -EIO;
+	struct myfs_disk_inode disk_inode;
+	ret = rw_disk_inode(sb, inode_no, &disk_inode, 0);
+	if (ret)
 		goto failed;
-	}
-	struct myfs_disk_inode *disk_inode = (struct myfs_disk_inode *)bh->b_data;
-	disk_inode += inode_no_inblock;
 	/*
 	 //todo set vfs inode / incore inode object fields (v.i. : set appropriate operations table)
 	 */
 	inode->i_ino = inode_no;
 	inode->i_sb = sb;
 	inode->i_op = &myfs_inode_ops;
-	inode->i_mode = le32_to_cpu(disk_inode->mode);
-	i_uid_write(inode, le16_to_cpu(disk_inode->uid));
-	i_gid_write(inode, le16_to_cpu(disk_inode->gid));
-	i_size_write(inode, le32_to_cpu(disk_inode->size));
-	inode->i_ctime.tv_sec = (time64_t)(le32_to_cpu(disk_inode->ctime));
+	inode->i_mode = le32_to_cpu(disk_inode.mode);
+	i_uid_write(inode, le16_to_cpu(disk_inode.uid));
+	i_gid_write(inode, le16_to_cpu(disk_inode.gid));
+	i_size_write(inode, le32_to_cpu(disk_inode.size));
+	inode->i_ctime.tv_sec = (time64_t)(le32_to_cpu(disk_inode.ctime));
 	inode->i_ctime.tv_nsec = 0;
-	inode->i_atime.tv_sec = (time64_t)(le32_to_cpu(disk_inode->atime));
+	inode->i_atime.tv_sec = (time64_t)(le32_to_cpu(disk_inode.atime));
 	inode->i_atime.tv_nsec = 0;
-	inode->i_mtime.tv_sec = (time64_t)(le32_to_cpu(disk_inode->mtime));
+	inode->i_mtime.tv_sec = (time64_t)(le32_to_cpu(disk_inode.mtime));
 	inode->i_mtime.tv_nsec = 0;
-	set_nlink(inode, le32_to_cpu(disk_inode->link_count));
-	inode->i_blocks = le32_to_cpu(disk_inode->block_count);
-	memcpy(MYFS_I(inode)->data, disk_inode->data, MYFS_NUM_POINTERS * 8);
+	set_nlink(inode, le32_to_cpu(disk_inode.link_count));
+	inode->i_blocks = le32_to_cpu(disk_inode.block_count);
+	inode->i_size = le32_to_cpu(disk_inode.size);
 	if (S_ISDIR(inode->i_mode))
 	{
 		inode->i_fop = &myfs_dir_fops;
+		for (i = 0; i < MYFS_NUM_POINTERS; i++)
+			incore->data[i] = disk_inode.data[i];
 	}
 	else if (S_ISREG(inode->i_mode))
 	{
+		for (i = 0; i < MYFS_NUM_POINTERS; i++)
+			incore->data[i] = disk_inode.data[i];
 		inode->i_fop = &myfs_file_ops;
 		inode->i_mapping->a_ops = &myfs_file_asops;
-		if (TEST_OP(disk_inode->security_info.protections, MYFS_PASS))
+		if (TEST_OP(disk_inode.security_info.protections, MYFS_PASS))
 			incore->flags &= ~MYFS_REGACC;
 		else
 		{
 			incore->flags |= MYFS_REGACC;
 			incore->key = isb->security_info.key;
 		}
-		incore->flags |= disk_inode->security_info.protections & (MYFS_CHNK | MYFS_TRNS);
+		incore->flags |= disk_inode.security_info.protections & (MYFS_CHNK | MYFS_TRNS);
 		/*
 		 ! for now, all regular files have transposition & encryption. This can be easily made into an option
 		 */
 	}
 	else if (S_ISLNK(inode->i_mode))
 	{
+		memcpy(MYFS_I(inode)->data, disk_inode.data, inode->i_size);
 		inode->i_link = (char *)MYFS_I(inode)->data;
 		inode->i_op = &myfs_symlink_inode_ops;
 	}
 
-	brelse(bh);
 	unlock_new_inode(inode); /* unlock the locked inode if the inode is new */
 	return inode;
 
 failed:
-	brelse(bh);
 	iget_failed(inode);
 	return ERR_PTR(ret);
 }
@@ -303,7 +307,7 @@ failed:
  *
  * @return pointer to the matching directory entry if found, NULL otherwise
  */
-static struct myfs_dir_entry *dir_find_entry(struct inode *dir, struct qstr name, struct buffer_head **res_bh, int *l_block_no, int *entry_no)
+static struct myfs_dir_entry *dir_find_entry(struct inode *dir, struct qstr name, struct buffer_head **res_bh, sector_t *l_block_no, int *entry_no)
 {
 	int n_blocks = dir->i_blocks;
 	int n_entries = i_size_read(dir) / MYFS_DIR_ENTRY_SIZE;
@@ -313,11 +317,11 @@ static struct myfs_dir_entry *dir_find_entry(struct inode *dir, struct qstr name
 	struct buffer_head *bh;
 	while (n_blocks--)
 	{
-		bh = sb_bread(sb, *block_no);
+		bh = sb_bread(sb, (sector_t)*block_no);
 		if (!bh)
 			return NULL;
 		int c = n_entries - n_seen >= MYFS_DIR_ENTRY_PERBLOCK ? MYFS_DIR_ENTRY_PERBLOCK : n_entries - n_seen;
-		struct myfs_dir_entry *dentry = bh->b_data;
+		struct myfs_dir_entry *dentry = (struct myfs_dir_entry *)bh->b_data;
 		while (c--)
 		{
 			if (strncmp(dentry->name, name.name, name.len) == 0)
@@ -331,6 +335,7 @@ static struct myfs_dir_entry *dir_find_entry(struct inode *dir, struct qstr name
 		}
 		brelse(bh);
 		n_blocks_seen++;
+		block_no++;
 	}
 	return NULL;
 }
@@ -397,18 +402,18 @@ static int remove_password_from_qstr(struct qstr *qstr, struct myfs_key *key, st
 {
 	// Find the position of the password separator in the qstr.
 	char *pass = memchr(qstr->name, MYFS_PASS_SEP, qstr->len);
-
 	// If there is no password, return 0.
 	if (!pass)
 		return 0;
 
 	// Generate the key and password hash from the password.
 	pass++;
-	passwd_to_key(pass, qstr->len - (pass - qstr->name), key);
-	passwd_to_hash(pass, qstr->len - (pass - qstr->name), hash);
+	int passlen = qstr->len - ((const char *)pass - qstr->name);
+	passwd_to_key(pass, passlen, key);
+	passwd_to_hash(pass, passlen, hash);
 
 	// Remove the password from the qstr.
-	qstr->len = (pass - qstr->name) - 1;
+	qstr->len -= passlen + 1; // 1 extra for
 
 	// Return 1 to indicate that a password was found and removed.
 	return 1;
@@ -538,15 +543,15 @@ iput:
  */
 int free_index(struct super_block *sb, sector_t b_no, int level)
 {
-	int c = 0,i;
+	int c = 0, i;
 	if (level <= 0 || b_no == 0) // these cases should generally not occur
-		return;
+		return 0;
 	struct buffer_head *bh = sb_bread(sb, b_no);
 	if (!bh)
-		return;
+		return 0;
 	__le32 *entry = (__le32 *)bh->b_data;
 	if (level == 1)
-		for ( i = 0; i < MYFS_POINTERS_PERBLOCK; i++)
+		for (i = 0; i < MYFS_POINTERS_PERBLOCK; i++)
 		{
 			sector_t bno = *entry;
 			if (bno)
@@ -583,7 +588,7 @@ int free_index(struct super_block *sb, sector_t b_no, int level)
  */
 static void free_all_blocks(struct inode *inode)
 {
-	u32 *data = MYFS_I(inode)->data;
+	sector_t *data = MYFS_I(inode)->data;
 	struct super_block *sb = inode->i_sb;
 	int i;
 	if (S_ISDIR(inode->i_mode))
@@ -595,14 +600,14 @@ static void free_all_blocks(struct inode *inode)
 	}
 	else if (S_ISREG(inode->i_mode))
 	{
-		for ( i = 0; i < MYFS_DIR; i++)
+		for (i = 0; i < MYFS_DIR; i++)
 			myfs_bfree(sb, *data++);
-		for ( i = 0; i < MYFS_SINGLE_INDIR; i++)
+		for (i = 0; i < MYFS_SINGLE_INDIR; i++)
 		{
 			free_index(sb, *data, 1);
 			myfs_bfree(sb, *data++);
 		}
-		for ( i = 0; i < MYFS_DOUBLE_INDIR; i++)
+		for (i = 0; i < MYFS_DOUBLE_INDIR; i++)
 		{
 			free_index(sb, *data, 2);
 			myfs_bfree(sb, *data++);
@@ -647,7 +652,7 @@ static int myfs_add_entry_to_dir(struct inode *dir, struct myfs_dir_entry *dentr
 	}
 
 	struct buffer_head *bh = sb_bread(dir->i_sb, block_no);
-	if (IS_ERR(bh))
+	if (!bh)
 		return -EIO;
 
 	struct myfs_dir_entry *disk_dentry = (struct myfs_dir_entry *)bh->b_data;
@@ -743,13 +748,13 @@ static int myfs_remove_entry_from_dir(struct inode *dir, struct dentry *dentry)
 			/*
 			 * last block contains only 1 dentry. free the block
 			 */
-			sector_t block_no = (sector_t)MYFS_I(dir)->data[n_blocks - 1];
+			sector_t block_no = MYFS_I(dir)->data[n_blocks - 1];
 			MYFS_I(dir)->data[n_blocks - 1] = 0;
-			myfs_put_block(block_no);
+			myfs_bfree(block_no);
 			dir->i_blocks--;
 		}
 	}
-	i_size_write(dir,size - MYFS_DIR_ENTRY_SIZE);
+	i_size_write(dir, size - MYFS_DIR_ENTRY_SIZE);
 	mark_inode_dirty(dir);
 	mark_buffer_dirty(bh);
 	brelse(bh);
@@ -770,7 +775,6 @@ static int myfs_remove_entry_from_dir(struct inode *dir, struct dentry *dentry)
 static int myfs_unlink(struct inode *dir, struct dentry *dentry)
 {
 	struct super_block *sb = dir->i_sb;
-	struct myfs_incore_inode *isb = MYFS_SB(sb);
 	struct inode *inode = d_inode(dentry);
 	struct buffer_head *bh = NULL, *bh2 = NULL;
 	unsigned long inode_no = inode->i_ino;
@@ -841,7 +845,7 @@ static int myfs_create(struct user_namespace *ns, struct inode *dir, struct dent
 		return -ENOSPC;
 
 	// returns inode with link count 1
-	struct inode *inode = myfs_new_inode(sb, mode);
+	struct inode *inode = myfs_new_inode(dir, mode);
 
 	if (IS_ERR(inode))
 		return PTR_ERR(inode);
@@ -974,7 +978,7 @@ static int myfs_link(struct dentry *old, struct inode *dir, struct dentry *new)
 
 	// Add the new dentry to the directory
 	int ret = 0;
-	if (ret = myfs_add_entry_to_dir(dir, &new))
+	if (ret = myfs_add_entry_to_dir(dir, &disk_dentry))
 	{
 		// If adding the new dentry to the directory failed, decrement the link count of the old inode
 		inode_dec_link_count(inode);
@@ -1135,7 +1139,8 @@ static int myfs_symlink(struct user_namespace *ns, struct inode *dir, struct den
 	}
 
 	// Copy symlink name to inode data
-	memcpy(MYFS_I(inode)->data, symname, l);
+	memcpy(inode->i_link, symname, l);
+	i_size_write(inode, l);
 	mark_inode_dirty(inode);
 
 	// Instantiate dentry with inode

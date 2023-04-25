@@ -12,7 +12,7 @@
 static struct dentry *myfs_mount(struct file_system_type *fs_type,
 								 int flags, const char *dev_name, void *data)
 {
-	mount_bdev(fs_type, flags, dev_name, data, myfs_fill_super);
+	return mount_bdev(fs_type, flags, dev_name, data, myfs_fill_super);
 }
 
 static struct file_system_type myfs_fs = {

@@ -450,7 +450,6 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 	uint chain[MYFS_MAX_INDEX_DEPTH];
 	int d = lblk_to_lindex((size - 1) / MYFS_BLOCK_SIZE, chain);
 	ino_t ino = inode->i_ino;
-	int i;
 	if (d == 1)
 	{
 		__myfs_truncate_remove_double_indirect(inode);
@@ -620,7 +619,7 @@ static int myfs_open(struct inode *inode, struct file *filep)
 	return 0;
 }
 
-const struct file_operations myfs_file_ops = {
+struct file_operations myfs_file_ops = {
 	.llseek = generic_file_llseek,
 	.owner = THIS_MODULE,
 	.read_iter = generic_file_read_iter,

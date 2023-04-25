@@ -64,5 +64,26 @@
   ],
   "C_Cpp.commentContinuationPatterns": [
     "/**","/*"
-  ]
+  ],
+  "files.associations": {
+    "*.sh": "shellscript",
+    "*.l": "lex",
+    "*.lisp": "commonlisp",
+    "*.html": "html",
+    "questions": "plaintext",
+    "*.lby": "assembly",
+    "*.y": "yacc",
+    "*.pl": "perl",
+    "*.h": "c",
+    "array": "c",
+    "*.tcc": "c",
+    "string": "c",
+    "vector": "c",
+    "string_view": "c",
+    "functional": "c",
+    "limits": "c",
+    "ostream": "c",
+    "streambuf": "c",
+    "tuple": "c"
+  }
 }
