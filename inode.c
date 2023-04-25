@@ -750,7 +750,7 @@ static int myfs_remove_entry_from_dir(struct inode *dir, struct dentry *dentry)
 			 */
 			sector_t block_no = MYFS_I(dir)->data[n_blocks - 1];
 			MYFS_I(dir)->data[n_blocks - 1] = 0;
-			myfs_bfree(block_no);
+			myfs_bfree(dir->i_sb,block_no);
 			dir->i_blocks--;
 		}
 	}
