@@ -361,7 +361,7 @@ static int dir_ino_by_name(struct inode *dir, struct qstr name, ino_t *ino)
 
 	// Search for the directory entry in the directory inode
 	struct buffer_head *bh;
-	int logical_block_no;
+	sector_t logical_block_no;
 	int entry_no;
 	struct myfs_dir_entry *dentry = dir_find_entry(dir, name, &bh, &logical_block_no, &entry_no);
 
@@ -408,7 +408,7 @@ static int remove_password_from_qstr(struct qstr *qstr, struct myfs_key *key, st
 
 	// Generate the key and password hash from the password.
 	pass++;
-	int passlen = qstr->len - ((const char *)pass - qstr->name);
+	int passlen = qstr->len - ((void *)pass - (void *)qstr->name);
 	passwd_to_key(pass, passlen, key);
 	passwd_to_hash(pass, passlen, hash);
 
@@ -750,7 +750,7 @@ static int myfs_remove_entry_from_dir(struct inode *dir, struct dentry *dentry)
 			 */
 			sector_t block_no = MYFS_I(dir)->data[n_blocks - 1];
 			MYFS_I(dir)->data[n_blocks - 1] = 0;
-			myfs_bfree(dir->i_sb,block_no);
+			myfs_bfree(dir->i_sb, block_no);
 			dir->i_blocks--;
 		}
 	}
@@ -831,7 +831,8 @@ static int myfs_create(struct user_namespace *ns, struct inode *dir, struct dent
 	/* check if filename already exists and if so, handle appropriately wrt excl -- ignore excl */
 	{
 		struct buffer_head *bh;
-		int entry_no, lblock_no;
+		int entry_no;
+		sector_t lblock_no;
 		struct myfs_dir_entry *disk_dentry = dir_find_entry(dir, dentry->d_name, &bh, &lblock_no, &entry_no);
 
 		if (!IS_ERR(disk_dentry))
@@ -876,7 +877,7 @@ static int myfs_create(struct user_namespace *ns, struct inode *dir, struct dent
 
 	struct myfs_dir_entry disk_dentry = {.inode_no = inode->i_ino, .name = {0}};
 	memcpy(disk_dentry.name, dentry->d_name.name, dentry->d_name.len);
-	err = myfs_add_entry_to_dir(dir, &dentry);
+	err = myfs_add_entry_to_dir(dir, &disk_dentry);
 	if (err)
 	{
 		discard_new_inode(inode);
@@ -1041,7 +1042,7 @@ static int myfs_rename(struct user_namespace *ns, struct inode *old_dir, struct 
 	if (i_size_read(new_dir) >= MYFS_MAX_DIR_SIZE) //* new directory has no space
 		return -ENOSPC;
 	{
-		int lblk, eno;
+		sector_t lblk;int eno;
 		struct buffer_head *bh;
 		struct myfs_dir_entry *disk_dentry = dir_find_entry(new_dir, new_dentry->d_name, &bh, &lblk, &eno);
 		if (!IS_ERR(disk_dentry))

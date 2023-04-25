@@ -1,6 +1,6 @@
 #ifndef MYFS_H
 #define MYFS_H
-#define __KERNEL__
+//#define __KERNEL__
 #include <linux/fs.h>
 #include <linux/stat.h>
 #include <linux/version.h>
@@ -10,8 +10,7 @@
 #include "cryp.h"
 #include "myfs_disk_structs.h"
 
-#define TEST_OP(FLAG, OPTION) ((FLAG) & (OPTION) == (OPTION))
-#define TEST_NOP(FLAG, OPTION) ((FLAG) & (OPTION) == 0)
+#define TEST_OP(FLAG, OPTION) (((FLAG) & (OPTION)) == (OPTION))
 
 #define MYFS_I(vfs_i) container_of(vfs_i, struct myfs_incore_inode, vfs_inode)
 #define MYFS_SB(vfs_sb) ((struct myfs_incore_superblock *)(vfs_sb->s_fs_info))
