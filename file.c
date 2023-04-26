@@ -369,7 +369,7 @@ static int myfs_readpage(struct file *file, struct page *page)
 #if PAGE_SIZE == MYFS_BLOCK_SIZE
 	int err = 0;
 	err = mpage_readpage(page, myfs_get_ith_block);
-	if (!err && page_has_buffers(page))
+	if (!err && !is_zero_pfn(page_to_pfn(page)))
 	{
 		void *block = NULL;
 		/* sector_t block_no; */
