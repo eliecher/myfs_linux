@@ -216,7 +216,8 @@ static void md5_transform(__u32 state[4], const unsigned char buffer[64])
 	__u32 c = state[2];
 	__u32 d = state[3];
 	__u32 x[16];
-	int i = 0;
+	int i;
+	i = 0;
 	/* Convert the input buffer to an array of 32-bit words */
 	for (i = 0; i < 16; i++)
 	{
@@ -438,12 +439,12 @@ static inline void aes_mix_columns(word state[4])
 static inline void aes_encrypt(__u8 block[16], word round_keys[44])
 {
 	word state[4];
-	int i,j;
+	int i, j;
+	int round;
 	for (i = 0; i < 4; i++)
 		for (j = 0; j < 4; j++)
 			state[i].w[j] = block[i * 4 + j];
 	aes_add_round_key(state, round_keys);
-	int round;
 	for (round = 1; round < 10; round++)
 	{
 		aes_byte_sub(state);
@@ -462,9 +463,12 @@ static inline void aes_encrypt(__u8 block[16], word round_keys[44])
 void chunk_encrypt(void *block, struct myfs_key *key, /* sector_t block_no, */ __u32 ino, long long start_off, long long end_off)
 {
 	word keys[44];
-	aes_expand_key(key->key, keys);
 	__u8 buffer[16];
-	int i,j,k;
+	int n_chunks;
+	unsigned char(*chunks)[16];
+	int i, j, k;
+	long long s;
+	aes_expand_key(key->key, keys);
 	if (
 #ifdef __KERNEL__
 		unlikely(
@@ -473,7 +477,7 @@ void chunk_encrypt(void *block, struct myfs_key *key, /* sector_t block_no, */ _
 #endif
 			start_off % 16))
 	{
-		long long s = start_off - start_off % 16;
+		s = start_off - start_off % 16;
 		memset(buffer, 0, 16);
 		/* store ino in big endian format */
 		buffer[0] = ino >> 24;
@@ -495,8 +499,8 @@ void chunk_encrypt(void *block, struct myfs_key *key, /* sector_t block_no, */ _
 		block += 16 - start_off % 16;
 		start_off = s + 16;
 	}
-	int n_chunks = (end_off - start_off) / 16;
-	unsigned char(*chunks)[16] = block;
+	n_chunks = (end_off - start_off) / 16;
+	chunks = (char(*)[16])block;
 	for (i = 0; i < n_chunks; i++)
 	{
 		memset(buffer, 0, 16);
@@ -538,7 +542,7 @@ void chunk_encrypt(void *block, struct myfs_key *key, /* sector_t block_no, */ _
 		buffer[9] = start_off >> 8;
 		buffer[8] = start_off;
 		aes_encrypt(buffer, keys);
-		for ( j = 0; j < end_off - start_off; j++)
+		for (j = 0; j < end_off - start_off; j++)
 			chunks[n_chunks][j] ^= buffer[j];
 		start_off = end_off;
 	}
@@ -2633,14 +2637,14 @@ int transposition_cipher(struct myfs_key fkey, unsigned long i_no, unsigned long
 {
 	__u32 rno = (i_no * block_no + i_no << 1 + block_no) / (block_no % (i_no % 20) + 1);
 	__u8 key_block[MYFS_KEY_LEN + 4];
+	__u16 rkeys[16];
+	int i;
 	key_block[0] = rno >> 16;
 	key_block[1] = rno >> 24;
 	key_block[MYFS_KEY_LEN] = rno;
 	key_block[MYFS_KEY_LEN + 1] = rno >> 8;
 	memcpy(key_block + 2, fkey.key, MYFS_KEY_LEN);
-	__u16 rkeys[16];
-	int i;
-	for ( i = 0; i < 16; i++)
+	for (i = 0; i < 16; i++)
 	{
 		switch ((i * 10) % 8)
 		{

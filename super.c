@@ -185,7 +185,7 @@ int myfs_fill_super(struct super_block *sb, void *data, int silent)
 	sb_set_blocksize(sb, MYFS_BLOCK_SIZE);
 	sb->s_maxbytes = MYFS_MAX_FILE_SIZE;
 	sb->s_op = &myfs_super_ops;
-	int pass_len = extract_pass((char**)(&data));
+	int pass_len = extract_pass((char **)(&data));
 	if (pass_len < 0)
 	{
 		err = -ENOTSUPP;
@@ -219,7 +219,7 @@ int myfs_fill_super(struct super_block *sb, void *data, int silent)
 		err = -ENOMEM;
 		goto release;
 	}
-
+	sb->s_fs_info = (void *)isb;
 	*isb = (struct myfs_incore_superblock){
 		.bbmap_block_count = dsb->data_bitmap_num_blocks,
 		.bbmap_last_block_bits = (dsb->data_block_count - 1) % MYFS_BLOCK_SIZE_IN_BITS,
@@ -325,9 +325,9 @@ sector_t myfs_balloc(struct super_block *sb)
 	if (isb->free_data_block_count == 0)
 		goto unlock_and_out;
 	struct buffer_head *bh = NULL;
-	int f = 0,i;
+	int f = 0, i;
 	sector_t bbmap = isb->bbmap_start_block;
-	for ( i = 0; i < isb->bbmap_block_count; i++)
+	for (i = 0; i < isb->bbmap_block_count; i++)
 	{
 		bh = sb_bread(sb, bbmap);
 		uint32_t last_bitpos = (i == isb->bbmap_block_count - 1) ? isb->bbmap_last_block_bits : MYFS_BLOCK_SIZE_IN_BITS - 1;

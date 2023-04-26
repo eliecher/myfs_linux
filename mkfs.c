@@ -1,4 +1,6 @@
-#include "myfs.h"
+#include "myfs_disk_structs.h"
+#include "cryp.c"
+#define __KERNEL__
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -7,6 +9,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdint.h>
+#include <linux/stat.h>
 #define NUM_INODES 4000
 
 static int wr_sb(int fd, const struct myfs_disk_superblock *sb)
@@ -46,7 +49,7 @@ static int wr_ibmap(int fd, const struct myfs_disk_superblock *sb)
 	unsigned char blk[MYFS_BLOCK_SIZE];
 	memset(blk, 0, MYFS_BLOCK_SIZE);
 	int i;
-	for ( i = 0; i < sb->inode_bitmap_num_blocks; i++)
+	for (i = 0; i < sb->inode_bitmap_num_blocks; i++)
 	{
 		if (write(fd, blk, MYFS_BLOCK_SIZE) != MYFS_BLOCK_SIZE)
 			return -1;
@@ -86,7 +89,7 @@ static int wr_bbmap(int fd, const struct myfs_disk_superblock *sb)
 	unsigned char blk[MYFS_BLOCK_SIZE];
 	memset(blk, 0, MYFS_BLOCK_SIZE);
 	int i;
-	for ( i = 0; i < sb->data_bitmap_num_blocks; i++)
+	for (i = 0; i < sb->data_bitmap_num_blocks; i++)
 	{
 		if (write(fd, blk, MYFS_BLOCK_SIZE) != MYFS_BLOCK_SIZE)
 			return -1;
@@ -153,19 +156,22 @@ int main(int argc, char **argv)
 		perror("couldn't get size\n");
 		goto close;
 	}
+	printf("BLKGETSIZE64=%ul\n", sz_in_bytes);
 	unsigned long n_blocks = sz_in_bytes / MYFS_BLOCK_SIZE;
 	unsigned long n_inodes = NUM_INODES;
 	unsigned long n_inode_blocks = n_inodes / MYFS_INODE_PERBLOCK + (n_inodes % MYFS_INODE_PERBLOCK != 0);
-	uint32_t ibmap_start = MYFS_INODE_STORE_START + n_inode_blocks;
-	uint32_t ibmap_len = (n_inodes / MYFS_BLOCK_SIZE_BITS) + (n_inodes % MYFS_BLOCK_SIZE_IN_BITS != 0);
-	uint32_t bbmap_start = ibmap_start + ibmap_len;
-	uint32_t n_blk_data_sec = n_blocks - bbmap_start;
+	unsigned long ibmap_start = MYFS_INODE_STORE_START + n_inode_blocks;
+	unsigned long ibmap_len = (n_inodes / MYFS_BLOCK_SIZE_IN_BITS) + (n_inodes % MYFS_BLOCK_SIZE_IN_BITS != 0);
+	unsigned long bbmap_start = ibmap_start + ibmap_len;
+	unsigned long n_blk_data_sec = n_blocks - bbmap_start;
+	printf("data section blocks count=%ul\n", n_blk_data_sec);
+	printf("n_inode_blocks=%ul\n", n_inode_blocks);
 	if (n_blk_data_sec < 2)
 	{
 		perror("very small device\n");
 		goto close;
 	}
-	uint32_t n_data_blks = (n_blk_data_sec * MYFS_BLOCK_SIZE_IN_BITS) / (MYFS_BLOCK_SIZE_IN_BITS + 1);
+	uint32_t n_data_blks = ((unsigned long long)n_blk_data_sec * MYFS_BLOCK_SIZE_IN_BITS) / (MYFS_BLOCK_SIZE_IN_BITS + 1);
 	uint32_t bbmap_len = n_blk_data_sec - n_data_blks;
 	while (bbmap_len * MYFS_BLOCK_SIZE_IN_BITS < n_data_blks)
 	{
@@ -188,6 +194,22 @@ int main(int argc, char **argv)
 		.magic = MYFS_MAGIC,
 		.security_info = {.hash = hash},
 	};
+	printf("n_blocks=%8x\n", n_blocks);
+	printf("data bmap len=%8x\n", bbmap_len);
+	printf("data bmap start=%8x\n", bbmap_start);
+	printf("data blk count=%8x\n", n_data_blks);
+	printf("data block start=%8x\n", data_blk_start);
+	printf("flags=%8x\n", MYFS_PASS);
+	printf("num free data=%8x\n", n_data_blks - 1);
+	printf("num free inode=%8x\n", n_inodes - 1 - MYFS_ROOT_INODE_NO);
+	printf("ibmap len=%8x\n", ibmap_len);
+	printf("ibmap start=%8x\n", ibmap_start);
+	printf("n_inodes=%8x\n", n_inodes);
+	printf("magic=%4x\n", MYFS_MAGIC);
+	printf("hash = ");
+	for (int i = 0; i < MYFS_HASH_LEN; i++)
+		printf("%2x ", hash.hash[i]);
+	printf("\n");
 	const struct myfs_disk_superblock *sb = &dsb;
 	err = wr_sb(fd, sb);
 	if (err)
@@ -207,7 +229,8 @@ int main(int argc, char **argv)
 	;
 close:
 	close(fd);
-	if(err){
+	if (err)
+	{
 		perror("ERROR\n");
 	}
 	return err;

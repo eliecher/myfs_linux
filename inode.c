@@ -35,13 +35,14 @@ static struct inode *myfs_new_inode(struct inode *dir, umode_t mode)
 	struct inode *inode = NULL;
 	struct myfs_incore_inode *incore;
 	struct super_block *sb = dir->i_sb;
+	ino_t ino;
 
 	/* Return an error if the mode is not a directory, regular file, or symlink */
 	if (!S_ISDIR(mode) && !S_ISREG(mode) && !S_ISLNK(mode))
 		return ERR_PTR(-ENOTSUPP);
 
 	/* Allocate a new inode number */
-	ino_t ino = myfs_ialloc(sb);
+	ino = myfs_ialloc(sb);
 	if (ino == 0)
 		return ERR_PTR(-ENOSPC);
 
@@ -97,14 +98,15 @@ static struct inode *myfs_new_inode(struct inode *dir, umode_t mode)
  */
 static int rw_disk_inode(struct super_block *sb, unsigned long inode_no, struct myfs_disk_inode *target, bool write)
 {
+	u64 blk_no = 0;
+	int inode_no_inblock = 0;
+	struct buffer_head *bh ;
 	if (inode_no >= MYFS_SB(sb)->inode_count)
 		return -EINVAL;
 	if (inode_no < MYFS_ROOT_INODE_NO)
 		return -EACCES;
-	u64 blk_no = 0;
-	int inode_no_inblock = 0;
 	inode_no_to_loc(inode_no, &blk_no, &inode_no_inblock);
-	struct buffer_head *bh = sb_bread(sb, blk_no);
+	bh = sb_bread(sb, blk_no);
 	if (!bh)
 		return -EIO;
 	struct myfs_disk_inode *disk_copy = ((struct myfs_disk_inode *)bh->b_data) + inode_no_inblock;
@@ -224,15 +226,17 @@ struct inode *myfs_iget(struct super_block *sb, unsigned long inode_no)
 {
 	int ret = 0, i;
 	struct myfs_incore_superblock *isb = MYFS_SB(sb);
+	struct inode *inode;
+	struct myfs_disk_inode disk_inode;
+	struct myfs_incore_inode *incore;
 	if (inode_no >= isb->inode_count || inode_no < MYFS_ROOT_INODE_NO) /* invalid inode number */
 		return ERR_PTR(-EINVAL);
-	struct inode *inode = iget_locked(sb, inode_no); /* get inode from cache */
+	inode = iget_locked(sb, inode_no); /* get inode from cache */
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
+	incore = MYFS_I(inode);
 	if (!TEST_OP(inode->i_state, I_NEW)) /* inode already in cache */
 		return inode;
-	struct myfs_incore_inode *incore = MYFS_I(inode);
-	struct myfs_disk_inode disk_inode;
 	ret = rw_disk_inode(sb, inode_no, &disk_inode, 0);
 	if (ret)
 		goto failed;

@@ -18,9 +18,9 @@ static struct dentry *myfs_mount(struct file_system_type *fs_type,
 static struct file_system_type myfs_fs = {
 	.owner = THIS_MODULE,
 	.name = "myfs",
-	.mount = myfs_mount,		 // for mounting
-	.kill_sb = kill_block_super, // kernel helper function
-	.fs_flags = FS_REQUIRES_DEV, // device based filesystem
+	.mount = myfs_mount,		 /*  for mounting */
+	.kill_sb = kill_block_super, /*  kernel helper function */
+	.fs_flags = FS_REQUIRES_DEV, /*  device based filesystem */
 };
 
 static int __init init_myfs_fs(void)

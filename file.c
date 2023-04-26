@@ -69,8 +69,9 @@ int lindex_to_pblock(struct inode *inode, sector_t *block, uint chain[MYFS_MAX_I
 {
 	sector_t bno;
 	struct buffer_head *bh;
-	struct super_block *sb = inode->i_sb;
+	struct super_block *sb;
 	int pentry_no;
+	sb = inode->i_sb;
 	*allocate_to_complete = 0;
 	switch (dep)
 	{
@@ -82,7 +83,7 @@ int lindex_to_pblock(struct inode *inode, sector_t *block, uint chain[MYFS_MAX_I
 		bno = MYFS_I(inode)->data[chain[0]];
 		*block = bno;
 		if (bno == 0)
-		{
+		{ /* index block and data block need to be allocated */
 			*allocate_to_complete = 2;
 			return 0;
 		}
@@ -93,7 +94,7 @@ int lindex_to_pblock(struct inode *inode, sector_t *block, uint chain[MYFS_MAX_I
 		bno = *((__le32 *)bh->b_data + pentry_no);
 		brelse(bh);
 		if (bno == 0)
-			*allocate_to_complete = 1;
+			*allocate_to_complete = 1; /* only data block to be allocated */
 		else
 			*block = bno;
 		return 0;
@@ -156,6 +157,9 @@ int allocate_blocks_with_index(struct inode *inode, int num_alloc, sector_t *fir
 	}
 	if (num_alloc == 2)
 	{
+		uint pentry_no;
+		__le32 *entry;
+		struct buffer_head *bh;
 		*first_alloc = myfs_balloc(sb);
 		if (*first_alloc == 0)
 			return -ENOSPC;
@@ -163,18 +167,20 @@ int allocate_blocks_with_index(struct inode *inode, int num_alloc, sector_t *fir
 		if (*data_block == 0)
 		{
 			myfs_bfree(sb, *first_alloc);
+			*first_alloc = *data_block = 0;
 			return -ENOSPC;
 		}
-		uint pentry_no = transposition_cipher(MYFS_I(inode)->key,inode->i_ino, *first_alloc, chain[0]);
-		struct buffer_head *bh = sb_bread(inode->i_sb, *first_alloc);
+		pentry_no = transposition_cipher(MYFS_I(inode)->key, inode->i_ino, *first_alloc, chain[0]);
+		bh = sb_bread(inode->i_sb, *first_alloc);
 		if (!bh)
 		{
 			myfs_bfree(sb, *data_block);
 			myfs_bfree(sb, *first_alloc);
+			*first_alloc = *data_block = 0;
 			return -EIO;
 		}
 		myfs_scrub_block(bh->b_data);
-		__le32 *entry = (__le32 *)bh->b_data;
+		entry = (__le32 *)bh->b_data;
 		entry += pentry_no;
 		*entry = *data_block;
 		brelse(bh);
@@ -183,13 +189,20 @@ int allocate_blocks_with_index(struct inode *inode, int num_alloc, sector_t *fir
 	if (num_alloc == 3)
 	{
 		sector_t middle;
+		uint pentry_no;
+		__le32 *entry;
+		struct buffer_head *bh;
 		*first_alloc = myfs_balloc(sb);
 		if (*first_alloc == 0)
+		{
+			*first_alloc = *data_block = 0;
 			return -ENOSPC;
+		}
 		middle = myfs_balloc(sb);
 		if (middle == 0)
 		{
 			myfs_bfree(sb, *first_alloc);
+			*first_alloc = *data_block = 0;
 			return -ENOSPC;
 		}
 		*data_block = myfs_balloc_and_scrub(sb);
@@ -197,19 +210,21 @@ int allocate_blocks_with_index(struct inode *inode, int num_alloc, sector_t *fir
 		{
 			myfs_bfree(sb, *first_alloc);
 			myfs_bfree(sb, middle);
+			*first_alloc = *data_block = 0;
 			return -ENOSPC;
 		}
-		uint pentry_no = transposition_cipher(MYFS_I(inode)->key, inode->i_ino, middle, chain[1]);
-		struct buffer_head *bh = sb_bread(inode->i_sb, middle);
+		pentry_no = transposition_cipher(MYFS_I(inode)->key, inode->i_ino, middle, chain[1]);
+		bh = sb_bread(inode->i_sb, middle);
 		if (!bh)
 		{
 			myfs_bfree(sb, *data_block);
 			myfs_bfree(sb, middle);
 			myfs_bfree(sb, *first_alloc);
+			*first_alloc = *data_block = 0;
 			return -EIO;
 		}
 		myfs_scrub_block(bh->b_data);
-		__le32 *entry = (__le32 *)bh->b_data;
+		entry = (__le32 *)bh->b_data;
 		entry += pentry_no;
 		*entry = *data_block;
 		brelse(bh);
@@ -220,6 +235,7 @@ int allocate_blocks_with_index(struct inode *inode, int num_alloc, sector_t *fir
 			myfs_bfree(sb, *data_block);
 			myfs_bfree(sb, middle);
 			myfs_bfree(sb, *first_alloc);
+			*first_alloc = *data_block = 0;
 			return -EIO;
 		}
 		myfs_scrub_block(bh->b_data);
@@ -234,31 +250,34 @@ int allocate_blocks_with_index(struct inode *inode, int num_alloc, sector_t *fir
 
 int myfs_logical_to_physical(struct inode *inode, sector_t log, sector_t *phy, int create, int *new)
 {
-	int err;
-	struct super_block *sb = inode->i_sb;
+	int err, dep, alloc_to_comp;
+	struct super_block *sb;
+	uint chain[MYFS_MAX_INDEX_DEPTH];
+	sb = inode->i_sb;
+	sector_t block_number;
 	if (log >= MYFS_MAX_FILE_BLOCKS || log > (i_size_read(inode) >> MYFS_BLOCK_SIZE_BITS))
 		return -EFBIG;
-	sector_t block_number = 0;
 	/*
 	// todo find block number for ith block of file
 	 */
-	uint chain[MYFS_MAX_INDEX_DEPTH];
-	int dep = lblk_to_lindex(log, chain);
+	block_number = 0;
+	dep = lblk_to_lindex(log, chain);
 	if (dep <= 0)
 		return -EINVAL;
-	int alloc_to_comp = 0;
+	alloc_to_comp = 0;
 	err = lindex_to_pblock(inode, &block_number, chain, dep, &alloc_to_comp);
 	if (err)
 		return err;
 	if (alloc_to_comp > 0)
 	{
+		sector_t first_alloc = 0;
+		sector_t last_already_alloc;
 		if (!create)
 			return -EINVAL;
 		/*
 		 //todo if the block has not been allocated, and 'create' is set, allocate new block and get its block number
 		 */
-		sector_t first_alloc = 0;
-		sector_t last_already_alloc = block_number;
+		last_already_alloc = block_number;
 		err = allocate_blocks_with_index(inode, alloc_to_comp, &first_alloc, &block_number, chain + dep - alloc_to_comp + 1);
 		if (err)
 			return err;
@@ -272,7 +291,9 @@ int myfs_logical_to_physical(struct inode *inode, sector_t log, sector_t *phy, i
 			/*
 			 * new entry is to be put into an index block
 			 */
-			struct buffer_head *bh2 = sb_bread(sb, last_already_alloc);
+			struct buffer_head *bh2;
+			__le32 *entry;
+			bh2 = sb_bread(sb, last_already_alloc);
 			if (!bh2)
 			{
 				if (alloc_to_comp > 1)
@@ -280,8 +301,8 @@ int myfs_logical_to_physical(struct inode *inode, sector_t log, sector_t *phy, i
 				myfs_bfree(sb, first_alloc);
 				return -EIO;
 			}
-			__le32 *entry = (__le32 *)bh2->b_data;
-			entry += transposition_cipher(MYFS_I(inode)->key,inode->i_ino, last_already_alloc, chain[dep - alloc_to_comp]);
+			entry = (__le32 *)bh2->b_data;
+			entry += transposition_cipher(MYFS_I(inode)->key, inode->i_ino, last_already_alloc, chain[dep - alloc_to_comp]);
 			*entry = first_alloc;
 			inode->i_blocks++;
 			brelse(bh2);
@@ -298,15 +319,15 @@ int myfs_logical_to_physical(struct inode *inode, sector_t log, sector_t *phy, i
 static int myfs_get_ith_block(struct inode *inode, sector_t i, struct buffer_head *bh, int create)
 {
 	int err = 0;
+	int new = 0, boundary = 0;
+	sector_t block_number;
 	if (i >= MYFS_MAX_FILE_BLOCKS || i > (i_size_read(inode) >> MYFS_BLOCK_SIZE_BITS))
 	{
 		err = -EFBIG;
 		goto end;
 	}
-	int new = 0, boundary = 0;
 	if (i == (i_size_read(inode) >> MYFS_BLOCK_SIZE_BITS))
 		boundary = 1;
-	sector_t block_number;
 	err = myfs_logical_to_physical(inode, i, &block_number, create, &new);
 	map_bh(bh, inode->i_sb, block_number);
 	if (new)
@@ -316,8 +337,9 @@ static int myfs_get_ith_block(struct inode *inode, sector_t i, struct buffer_hea
 end:
 	return err;
 }
-
-// static sector_t page_to_block_no(struct page *page); //! to be implemented
+/*
+static sector_t page_to_block_no(struct page *page); //! to be implemented
+*/
 
 static inline void get_page_details(struct page *page, struct inode *inode, void **block /* , sector_t *block_no */, loff_t *start, loff_t *end, unsigned long *ino)
 {
@@ -345,14 +367,17 @@ static inline void get_page_details(struct page *page, struct inode *inode, void
 static int myfs_readpage(struct file *file, struct page *page)
 {
 #if PAGE_SIZE == MYFS_BLOCK_SIZE
-	int err = mpage_readpage(page, myfs_get_ith_block);
+	int err = 0;
+	err = mpage_readpage(page, myfs_get_ith_block);
 	if (!err && page_has_buffers(page))
 	{
-		void *block = page_address(page);
-		sector_t block_no;
-		loff_t start, end;
+		void *block = NULL;
+		/* sector_t block_no; */
 		unsigned long ino;
-		struct myfs_key *fkey = &MYFS_I(file_inode(file))->key;
+		struct myfs_key *fkey;
+		loff_t start, end;
+		block = page_address(page);
+		fkey = &MYFS_I(file_inode(file))->key;
 		get_page_details(page, file_inode(file), &block, /* &block_no, */ &start, &end, &ino);
 		chunk_decrypt(block, fkey, /* block_no, */ ino, start, end);
 	}
@@ -370,14 +395,17 @@ static int myfs_writepage(struct page *page, struct writeback_control *wbc)
 #if PAGE_SIZE == MYFS_BLOCK_SIZE
 	if (!is_zero_pfn(page_to_pfn(page)))
 	{
-		sector_t block_no;
+		/* sector_t block_no; */
 		loff_t start, end;
 		unsigned long ino;
-		struct address_space *mapping = page_mapping(page);
+		struct myfs_key *fkey;
+		struct address_space *mapping;
+		void *block;
+		mapping = page_mapping(page);
 		if (IS_ERR(mapping))
 			return PTR_ERR(mapping);
-		struct myfs_key *fkey;
-		void *block = page_address(page);
+		block = page_address(page);
+		fkey = &MYFS_I(mapping->host)->key;
 		get_page_details(page, mapping->host, &block, /* &block_no, */ &start, &end, &ino);
 		chunk_encrypt(block, fkey, /* block_no, */ ino, start, end);
 	}
@@ -389,14 +417,18 @@ static int myfs_writepage(struct page *page, struct writeback_control *wbc)
 
 static void __myfs_truncate_remove_single_indirect(struct inode *inode)
 {
-	struct super_block *sb = inode->i_sb;
-	struct myfs_incore_inode *incore = MYFS_I(inode);
-	int p = MYFS_DIR,i;
+	struct super_block *sb;
+	struct myfs_incore_inode *incore;
+	int p, i;
+	sb = inode->i_sb;
+	incore = MYFS_I(inode);
+	p = MYFS_DIR;
 	for (i = 0; i < MYFS_SINGLE_INDIR; i++)
 	{
-		sector_t bno = incore->data[p];
+		sector_t bno;
+		bno = incore->data[p];
 		incore->data[p++] = 0;
-		if (bno != 0)
+		if (bno == 0)
 			continue;
 		inode->i_blocks -= free_index(sb, bno, 1);
 		mark_inode_dirty(inode);
@@ -406,14 +438,17 @@ static void __myfs_truncate_remove_single_indirect(struct inode *inode)
 
 static void __myfs_truncate_remove_double_indirect(struct inode *inode)
 {
-	struct super_block *sb = inode->i_sb;
+	struct super_block *sb;
 	struct myfs_incore_inode *incore = MYFS_I(inode);
-	int p = MYFS_DIR + MYFS_SINGLE_INDIR;
-	int i;for ( i = 0; i < MYFS_DOUBLE_INDIR; i++)
+	int p, i;
+	sb = inode->i_sb;
+	p = MYFS_DIR + MYFS_SINGLE_INDIR;
+	for (i = 0; i < MYFS_DOUBLE_INDIR; i++)
 	{
-		sector_t bno = incore->data[p];
+		sector_t bno;
+		bno = incore->data[p];
 		incore->data[p++] = 0;
-		if (bno != 0)
+		if (bno == 0)
 			continue;
 		inode->i_blocks -= free_index(sb, bno, 2);
 		mark_inode_dirty(inode);
@@ -426,10 +461,14 @@ static void __myfs_truncate_remove_double_indirect(struct inode *inode)
  */
 void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 {
-	struct super_block *sb = inode->i_sb;
-	struct myfs_incore_inode *incore = MYFS_I(inode);
+	struct super_block *sb;
+	struct myfs_incore_inode *incore;
 	int si = MYFS_DIR, di = MYFS_DIR + MYFS_SINGLE_INDIR;
-	int i;
+	int i, d;
+	ino_t ino;
+	uint chain[MYFS_MAX_INDEX_DEPTH];
+	incore = MYFS_I(inode);
+	sb = inode->i_sb;
 	if (size == 0)
 	{
 		for (i = 0; i < si; i++)
@@ -438,35 +477,37 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 			{
 				myfs_bfree(sb, incore->data[i]);
 				inode->i_blocks--;
+				incore->data[i] = 0;
 			}
-			incore->data[i] = 0;
 		}
-		__myfs_truncate_remove_double_indirect(inode);
 		__myfs_truncate_remove_single_indirect(inode);
+		__myfs_truncate_remove_double_indirect(inode);
 		inode->i_blocks = 0;
 		mark_inode_dirty(inode);
 		return;
 	}
-	uint chain[MYFS_MAX_INDEX_DEPTH];
-	int d = lblk_to_lindex((size - 1) / MYFS_BLOCK_SIZE, chain);
-	ino_t ino = inode->i_ino;
+	d = lblk_to_lindex((size - 1) / MYFS_BLOCK_SIZE, chain);
+	ino = inode->i_ino;
 	if (d == 1)
 	{
 		__myfs_truncate_remove_double_indirect(inode);
 		__myfs_truncate_remove_single_indirect(inode);
-		for ( i = chain[0] + 1; i < si; i++)
+		for (i = chain[0] + 1; i < si; i++)
 		{
-			sector_t bno = incore->data[i];
+			sector_t bno;
+			bno = incore->data[i];
 			incore->data[i] = 0;
 			if (bno == 0)
 				continue;
 			myfs_bfree(sb, bno);
+			inode->i_blocks--;
 			mark_inode_dirty(inode);
 		}
 	}
 	else if (d == 2)
 	{
-		sector_t bno = 0;
+		sector_t bno = 0, ibno;
+		struct buffer_head *bh;
 		__myfs_truncate_remove_double_indirect(inode);
 		for (i = chain[0] + 1; i < di; i++)
 		{
@@ -481,14 +522,16 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 		bno = incore->data[chain[0]];
 		if (bno == 0)
 			return;
-		struct buffer_head *bh = sb_bread(sb, bno);
-		sector_t ibno = bno;
+		ibno = bno;
+		bh = sb_bread(sb, ibno);
 		if (bh)
 		{
-			__le32 *index = (__le32 *)bh->b_data;
+			__le32 *index;
+			index = (__le32 *)bh->b_data;
 			for (i = chain[1] + 1; i < MYFS_POINTERS_PERBLOCK; i++)
 			{
-				int pentry = transposition_cipher(MYFS_I(inode)->key,ino, ibno, i);
+				int pentry;
+				pentry = transposition_cipher(MYFS_I(inode)->key, ino, ibno, i);
 				bno = index[pentry];
 				index[pentry] = 0;
 				if (bno == 0)
@@ -502,7 +545,8 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 	}
 	else if (d == 3)
 	{
-		sector_t bno = 0;
+		sector_t bno = 0, ibno;
+		struct buffer_head *bh;
 		for (i = chain[0] + 1; i < MYFS_NUM_POINTERS; i++)
 		{
 			bno = incore->data[i];
@@ -516,14 +560,15 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 		bno = incore->data[chain[0]];
 		if (bno == 0)
 			return;
-		sector_t ibno = bno;
-		struct buffer_head *bh = sb_bread(sb, ibno);
+		ibno = bno;
+		bh = sb_bread(sb, ibno);
 		if (bh)
 		{
-			__le32 *index = (__le32 *)bh->b_data;
+			__le32 *index;
+			index = (__le32 *)bh->b_data;
 			for (i = chain[1] + 1; i < MYFS_POINTERS_PERBLOCK; i++)
 			{
-				int pentry = transposition_cipher(MYFS_I(inode)->key,ino, ibno, i);
+				int pentry = transposition_cipher(MYFS_I(inode)->key, ino, ibno, i);
 				bno = index[pentry];
 				index[pentry] = 0;
 				if (bno == 0)
@@ -532,7 +577,7 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 				mark_inode_dirty(inode);
 				myfs_bfree(sb, bno);
 			}
-			bno = index[transposition_cipher(MYFS_I(inode)->key,ino, ibno, chain[1])];
+			bno = index[transposition_cipher(MYFS_I(inode)->key, ino, ibno, chain[1])];
 			brelse(bh);
 			if (bno == 0)
 				return;
@@ -542,7 +587,7 @@ void __myfs_truncate_blocks(struct inode *inode, loff_t size)
 			{
 				for (i = chain[2] + 1; i < MYFS_POINTERS_PERBLOCK; i++)
 				{
-					int pentry = transposition_cipher(MYFS_I(inode)->key,ino, ibno, i);
+					int pentry = transposition_cipher(MYFS_I(inode)->key, ino, ibno, i);
 					bno = index[pentry];
 					index[pentry] = 0;
 					if (bno == 0)
@@ -572,12 +617,14 @@ void myfs_truncate_blocks(struct inode *inode, loff_t size)
  */
 static void myfs_write_failed(struct address_space *mapping, loff_t to)
 {
-	struct inode *inode = mapping->host;
-	if (to > i_size_read(inode))
+	struct inode *inode;
+	loff_t size;
+	inode = mapping->host;
+	size = i_size_read(inode);
+	if (to > size)
 	{
-		loff_t size = i_size_read(inode);
-		truncate_pagecache(inode,size );	//* truncates page cache only. doesn't affect physical blocks
-		myfs_truncate_blocks(inode, size); //* truncates physical blocks
+		truncate_pagecache(inode, size);   /* truncates page cache only. doesn't affect physical blocks*/
+		myfs_truncate_blocks(inode, size); /* truncates physical blocks*/
 	}
 }
 
@@ -586,7 +633,8 @@ static int myfs_write_begin(struct file *file, struct address_space *mapping, lo
 	int ret;
 	ret = block_write_begin(mapping, pos, len, flags, pagep, myfs_get_ith_block);
 	if (ret < 0)
-		myfs_write_failed(mapping, pos + len); // will truncate and free blocks that were allocated but cannot be used as write failed
+		myfs_write_failed(mapping, pos + len); /* will truncate and free blocks that were allocated but cannot be used as write failed
+												*/
 	return ret;
 }
 
@@ -608,10 +656,12 @@ struct address_space_operations myfs_file_asops = {
 
 static int myfs_open(struct inode *inode, struct file *filep)
 {
+	struct dentry *dentry;
+	unsigned long dentry_flags;
 	if (!S_ISREG(inode->i_mode))
 		return -ENOTSUPP;
-	struct dentry *dentry = file_dentry(filep);
-	unsigned long dentry_flags = dentry_get_myfsflags(dentry);
+	dentry = file_dentry(filep);
+	dentry_flags = dentry_get_myfsflags(dentry);
 	if (!TEST_OP(dentry_flags, MYFS_REGACC))
 		return -EACCES;
 	if (!TEST_OP(MYFS_I(inode)->flags, MYFS_REGACC))
