@@ -863,6 +863,9 @@ static int myfs_create(struct user_namespace *ns, struct inode *dir, struct dent
 
 	if (S_ISREG(mode))
 	{
+		ulong f = dentry_get_myfsflags(dentry);
+		f |= MYFS_REGACC;
+		dentry_set_myfsflags(dentry, f);
 		incore->flags |= MYFS_REGACC | MYFS_CHNK;
 		incore->key = MYFS_SB(sb)->security_info.key;
 	}
