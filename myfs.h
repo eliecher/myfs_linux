@@ -17,33 +17,29 @@
 
 struct myfs_incore_superblock
 {
-	
-	__u32 block_count;
-	__u32 inode_count, free_inode_count;
-	__u32 ibmap_start_block, ibmap_block_count, ibmap_last_block_bits;
-	__u32 bbmap_start_block, bbmap_block_count, bbmap_last_block_bits;
-	__u32 data_block_start, data_block_count, free_data_block_count;
+
+	__u32 block_count;												   /* total blocks */
+	__u32 inode_count, free_inode_count;							   /* number of inodes--total,free */
+	__u32 ibmap_start_block, ibmap_block_count, ibmap_last_block_bits; /* inode bitmap info */
+	__u32 bbmap_start_block, bbmap_block_count, bbmap_last_block_bits; /* block bitmap info */
+	__u32 data_block_start, data_block_count, free_data_block_count;   /* data blocks info */
 	__u32 flags;
-	struct mutex i, b;
+	struct mutex i, b; /* mutex to ensure correctness when using bitmaps */
 	struct
 	{
-		struct myfs_pass_hash hash;
-		struct myfs_key key;
+		struct myfs_pass_hash hash; /* stores password hash */
+		struct myfs_key key;		/* volume key */
 	} security_info;
 };
 
 struct myfs_incore_inode
 {
 	__u32 flags;
-	/* 	u16 permissions;
-	 ! probably i_mode in vfs_inode will do the task
-	 */
-	sector_t data[MYFS_NUM_POINTERS];
-	struct myfs_pass_hash hash;
-	struct myfs_key key;
-	struct inode vfs_inode;
+	sector_t data[MYFS_NUM_POINTERS]; /* index for dir/reg, path for symlink */
+	struct myfs_pass_hash hash;		  /* hash of password. used when password is present */
+	struct myfs_key key;			  /* file key */
+	struct inode vfs_inode;			  /* vfs's inode */
 };
-
 
 /* @var */
 extern struct address_space_operations myfs_file_asops;

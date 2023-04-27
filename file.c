@@ -633,8 +633,7 @@ static int myfs_write_begin(struct file *file, struct address_space *mapping, lo
 	int ret;
 	ret = block_write_begin(mapping, pos, len, flags, pagep, myfs_get_ith_block);
 	if (ret < 0)
-		myfs_write_failed(mapping, pos + len); /* will truncate and free blocks that were allocated but cannot be used as write failed
-												*/
+		myfs_write_failed(mapping, pos + len); /* will truncate and free blocks that were allocated but cannot be used as write failed	*/
 	return ret;
 }
 
@@ -648,8 +647,8 @@ static int myfs_write_end(struct file *file, struct address_space *mapping, loff
 }
 
 struct address_space_operations myfs_file_asops = {
-	.readpage = myfs_readpage,
-	.writepage = myfs_writepage,
+	.readpage = myfs_readpage,	 /* read page and decrypt */
+	.writepage = myfs_writepage, /* encrypt and write */
 	.write_begin = myfs_write_begin,
 	.write_end = myfs_write_end,
 };
@@ -670,10 +669,11 @@ static int myfs_open(struct inode *inode, struct file *filep)
 }
 
 struct file_operations myfs_file_ops = {
+	/* most functions are kernel helpers */
 	.llseek = generic_file_llseek,
 	.owner = THIS_MODULE,
 	.read_iter = generic_file_read_iter,
 	.write_iter = generic_file_write_iter,
 	.fsync = generic_file_fsync,
-	.open = myfs_open,
+	.open = myfs_open, /* open function. confirms that we can access the file */
 };

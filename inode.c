@@ -100,7 +100,7 @@ static int rw_disk_inode(struct super_block *sb, unsigned long inode_no, struct 
 {
 	u64 blk_no = 0;
 	int inode_no_inblock = 0;
-	struct buffer_head *bh ;
+	struct buffer_head *bh;
 	if (inode_no >= MYFS_SB(sb)->inode_count)
 		return -EINVAL;
 	if (inode_no < MYFS_ROOT_INODE_NO)
@@ -1046,7 +1046,8 @@ static int myfs_rename(struct user_namespace *ns, struct inode *old_dir, struct 
 	if (i_size_read(new_dir) >= MYFS_MAX_DIR_SIZE) //* new directory has no space
 		return -ENOSPC;
 	{
-		sector_t lblk;int eno;
+		sector_t lblk;
+		int eno;
 		struct buffer_head *bh;
 		struct myfs_dir_entry *disk_dentry = dir_find_entry(new_dir, new_dentry->d_name, &bh, &lblk, &eno);
 		if (!IS_ERR(disk_dentry))
@@ -1155,14 +1156,14 @@ static int myfs_symlink(struct user_namespace *ns, struct inode *dir, struct den
 }
 
 static const struct inode_operations myfs_inode_ops = {
-	.lookup = myfs_lookup,
-	.create = myfs_create,
-	.link = myfs_link,
-	.unlink = myfs_unlink,
+	.lookup = myfs_lookup, /* lookup a name in directory  */
+	.create = myfs_create, /* create a file  */
+	.link = myfs_link,	   /* add a link (hard) to an inode */
+	.unlink = myfs_unlink, /* remove a link (rm) */
 	.mkdir = myfs_mkdir,
 	.rmdir = myfs_rmdir,
-	.rename = myfs_rename,
-	.symlink = myfs_symlink,
+	.rename = myfs_rename,	 /* move */
+	.symlink = myfs_symlink, /* create symbolic link */
 };
 
 /**
@@ -1179,5 +1180,5 @@ static const char *myfs_getsymlink(struct dentry *dentry, struct inode *inode, s
 }
 
 static const struct inode_operations myfs_symlink_inode_ops = {
-	.get_link = myfs_getsymlink,
+	.get_link = myfs_getsymlink, /* gives link string */
 };

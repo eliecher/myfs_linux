@@ -2669,3 +2669,10 @@ int transposition_cipher(struct myfs_key fkey, unsigned long i_no, unsigned long
 	}
 	return spn(lentry_no, rkeys);
 }
+
+void combine_keys(const struct myfs_key *to_add, struct myfs_key *add_to)
+{
+	int i;
+	for (i = 0; i < MYFS_KEY_LEN; i++)
+		add_to->key[i] ^= to_add->key[i];
+}

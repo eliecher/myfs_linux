@@ -147,13 +147,13 @@ static int myfs_statfs(struct dentry *dentry, struct kstatfs *stat)
  * super operations
  */
 struct super_operations myfs_super_ops = {
-	.alloc_inode = myfs_alloc_inode,
-	.destroy_inode = myfs_free_incore_inode,
-	.free_inode = myfs_free_incore_inode,
-	.write_inode = myfs_write_inode,
-	.evict_inode = myfs_evict_inode,
-	.sync_fs = myfs_sync_fs,
-	.statfs = myfs_statfs,
+	.alloc_inode = myfs_alloc_inode,		 /* allocate new incore inode */
+	.destroy_inode = myfs_free_incore_inode, /* free incore inode */
+	.free_inode = myfs_free_incore_inode,	 /* free incore inode */
+	.write_inode = myfs_write_inode,		 /* write inode back to device */
+	.evict_inode = myfs_evict_inode,		 /* marks the inode free for the filesystem */
+	.sync_fs = myfs_sync_fs,				 /* sync sb */
+	.statfs = myfs_statfs,					 /* gives fs's stats */
 };
 
 int extract_pass(char **data)
