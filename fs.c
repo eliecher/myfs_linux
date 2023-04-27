@@ -44,5 +44,6 @@ static void __exit exit_myfs_fs(void)
 	destroy_inode_cache();
 }
 
+MODULE_LICENSE("GPL");
 module_init(init_myfs_fs);
 module_exit(exit_myfs_fs);
