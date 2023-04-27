@@ -460,12 +460,13 @@ static inline void aes_encrypt(__u8 block[16], word round_keys[44])
 			block[i * 4 + j] = state[i].w[j];
 }
 
+typedef __u8 chunk[16];
 void chunk_encrypt(void *block, struct myfs_key *key, /* sector_t block_no, */ __u32 ino, long long start_off, long long end_off)
 {
 	word keys[44];
 	__u8 buffer[16];
 	int n_chunks;
-	unsigned char(*chunks)[16];
+	chunk *chunks;
 	int i, j, k;
 	long long s;
 	aes_expand_key(key->key, keys);
@@ -500,7 +501,7 @@ void chunk_encrypt(void *block, struct myfs_key *key, /* sector_t block_no, */ _
 		start_off = s + 16;
 	}
 	n_chunks = (end_off - start_off) / 16;
-	chunks = (char(*)[16])block;
+	chunks = (chunk*)(block);
 	for (i = 0; i < n_chunks; i++)
 	{
 		memset(buffer, 0, 16);
